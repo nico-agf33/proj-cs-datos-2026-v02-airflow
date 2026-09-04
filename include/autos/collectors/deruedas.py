@@ -147,11 +147,11 @@ def _scrape_detail(url: str) -> dict | None:
             "precio": price_val,
             "moneda": price_curr,
             "motor_lt": parse_motor(specs.get("motor_lt")),
-            "potencia_hp": as_number(specs.get("potencia_hp")),
+            "potencia_hp": parse_tecnico(specs.get("potencia_hp")),
             "transmision": specs.get("transmision"),
             "traccion": specs.get("traccion"),
             "combustible": specs.get("combustible"),
-            "consumo_lt_100km": parse_consumo(specs.get("consumo_lt_100km")),
+            "consumo_lt_100km": parse_tecnico(specs.get("consumo_lt_100km")),
             "ubicacion": get_meta("address"),
             "url": url,
             "fecha_ingesta": datetime.now().isoformat()

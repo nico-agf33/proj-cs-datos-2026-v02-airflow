@@ -116,11 +116,11 @@ def search(marca: str = None, modelo: str = None) -> list[dict]:
                     "precio": as_number(price_info.get("value")),
                     "moneda": price_info.get("currency", "ARS"),
                     "motor_lt": parse_motor(item.get("carone_cylinder_capacity")),
-                    "potencia_hp": as_number(item.get("carone_potency")),
+                    "potencia_hp": parse_tecnico(item.get("carone_potency")),
                     "transmision": (item.get("carone_transmission_data") or {}).get("label"),
                     "traccion": (item.get("carone_traction_data") or {}).get("label"),
                     "combustible": (item.get("carone_fuel_data") or {}).get("label"),
-                    "consumo_lt_100km": parse_consumo(item.get("carone_consumption")),
+                    "consumo_lt_100km": parse_tecnico(item.get("carone_consumption")),
                     "ubicacion": item.get("carone_dealer_id"),
                     "url": f"https://carone.com.ar/comprar/usados/{item.get('url_key')}",
                     "fecha_ingesta": datetime.now().isoformat()
