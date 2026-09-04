@@ -81,7 +81,7 @@ def search(marca: str = None, modelo: str = None) -> list[dict]:
                     "motor_lt": parse_motor(item.get("carone_cylinder_capacity")),
                     "potencia_hp": parse_tecnico(item.get("carone_potency")),
                     "transmision": (item.get("carone_transmission_data") or {}).get("label"),
-                    "traction": (item.get("carone_traction_data") or {}).get("label"),
+                    "traccion": (item.get("carone_traction_data") or {}).get("label"),
                     "combustible": (item.get("carone_fuel_data") or {}).get("label"),
                     "consumo_lt_100km": parse_tecnico(item.get("carone_consumption")),
                     "ubicacion": item.get("carone_dealer_id"),
