@@ -27,7 +27,7 @@ def get_available_brands() -> list[str]:
         logger.error(f"[deruedas] Error descubriendo marcas: {e}")
         return []
 
-def search(marca: str = None, modelo: str = None, delay: float = 1.5) -> list[dict]:
+def search(marca: str = None, modelo: str = None, delay: float = 2.0) -> list[dict]:
     results = []
     page = 1
     params = "segmento=0"
