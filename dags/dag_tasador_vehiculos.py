@@ -107,7 +107,7 @@ def pipeline_vehiculos():
         ruta_deruedas = DIR_BRONCE / "deruedas"
         ruta_deruedas.mkdir(parents=True, exist_ok=True)
         
-        datos_scraping = deruedas.search(marca=marca,delay=2.0)
+        datos_scraping = deruedas.search(marca=marca,delay=1.4)
         if not datos_scraping: 
             return None
         
