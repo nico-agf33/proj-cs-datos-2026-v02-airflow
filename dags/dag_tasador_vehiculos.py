@@ -1,15 +1,15 @@
 """
-### Pipeline de Ingeniería de Datos - Tasación de Vehículos (Cosecha Mensual)
+
 Grupo: 5K09-03
-Propósito: Obtener el universo de usados cada 30 días para entrenamiento de modelo.
+
 """
 from __future__ import annotations
 import json
 import zipfile
 import os
 import logging
-import gzip 
-import requests 
+import gzip
+import requests
 from pathlib import Path
 import pendulum
 import pandas as pd
@@ -52,7 +52,7 @@ def pipeline_vehiculos():
         log.info("directorios creados")
         return True
 
-    ### sensor -> verificar que los portales respondan
+    #### sensor -> verificar que los portales respondan
     @task.sensor(poke_interval=60, timeout=1800, mode="reschedule", soft_fail=True)
     def validar_disponibilidad_fuentes():
         try:
@@ -64,7 +64,7 @@ def pipeline_vehiculos():
                 return ResultadoValidacion(is_done=True)
             return ResultadoValidacion(is_done=False)
         except Exception as e:
-            log.warning("Fallo de conectividad: %s", e)
+            log.warning("Fallodeconectividad: %s", e)
             return ResultadoValidacion(is_done=False)
 
     ### listado de marcas
@@ -93,9 +93,9 @@ def pipeline_vehiculos():
         dias_transcurridos = (pendulum.now() - pendulum.parse(ultima_fecha)).days
         return dias_transcurridos >= 30
 
-    ### capa bronce -> ingesta
+    ### capa bronce-> ingesta
     @task
-    def cosecha_bronce_carone():
+    def cosecha_bronce_carone(trigger): 
         ### el collector search() se detiene cuando la API no devuelve mas nada
         datos_api = carone.search() 
         ruta_archivo = DIR_BRONCE / "carone_raw.json"
@@ -104,7 +104,7 @@ def pipeline_vehiculos():
         return str(ruta_archivo)
 
     @task(map_index_template="{{ task.op_kwargs['marca'] }}")
-    def cosecha_bronce_deruedas(marca):
+    def cosecha_bronce_deruedas(marca, trigger): 
         ### HTML crudo 
         marca_dir = DIR_BRONCE / "deruedas" / f"marca={_slug(marca)}"
         marca_dir.mkdir(parents=True, exist_ok=True)
@@ -114,16 +114,13 @@ def pipeline_vehiculos():
         headers = {"User-Agent": "Mozilla/5.0"}
         
         while True:
-            ### solicitar links de la pagina actual del buscador
             links = deruedas.fetch_search_page_links(marca, page)
-            if not links:
-                break
+            if not links: break
 
             for url in links:
                 car_id = url.split("cod=")[-1]
                 file_path = marca_dir / f"id_{car_id}.html.gz"
                 
-                ### si el archivo existe, no se vuelve a pedir (Append-only)
                 if not file_path.exists():
                     try:
                         resp = requests.get(url, headers=headers, timeout=15)
@@ -131,27 +128,23 @@ def pipeline_vehiculos():
                         with gzip.open(file_path, "wt", encoding="utf-8") as f:
                             f.write(resp.text)
                         time.sleep(1.55) ### demora de proteccion
-                    except:
-                        continue
+                    except: continue
                 
                 saved_paths.append(str(file_path))
-            
             page += 1
-            if page > 50: break ### ''freno de seguridad''
+            if page > 50: break 
             
-        return saved_paths ### devolver lista de rutas de archivos HTML
+        return saved_paths 
 
-    ### capa plata -> transformacion y dataset tidy
+    ### capa plata-> transformacion y dataset tidy
     @task
     def consolidar_capa_plata(json_carone, paths_dr_nested, **context):
         DIR_PLATA.mkdir(parents=True, exist_ok=True)
         registros_unificados = []
         
-        ### cargar CarOne (JSON ya procesado por el collector)
         with open(json_carone, 'r') as f:
             registros_unificados.extend(json.load(f))
             
-        ### cargar DeRuedas parseando los archivos HTML locales
         for path_list in paths_dr_nested:
             if not path_list: continue
             for file_path in path_list:
@@ -159,16 +152,13 @@ def pipeline_vehiculos():
                     with gzip.open(file_path, "rt", encoding="utf-8") as f:
                         html_content = f.read()
                     
-                    ### reconstruir la URL para que el ID sea consistente
                     car_id = Path(file_path).name.replace("id_", "").replace(".html.gz", "")
                     url_original = f"https://www.deruedas.com.ar/resul.asp?cod={car_id}"
                     
-                    ### llamar al nuevo parser definido en el collector
                     data = deruedas.parse_html_to_dict(html_content, url_original)
                     if data:
                         registros_unificados.extend([data] if isinstance(data, dict) else data)
-                except:
-                    continue
+                except: continue
 
         df = pd.DataFrame(registros_unificados)
         
@@ -212,14 +202,12 @@ def pipeline_vehiculos():
             zipf.write(csv_path, arcname="dataset.csv")
             zipf.write(__file__, arcname="codigo_dag.py")
             
-            ### incluir listado de archivos bronce
             path_bronce_txt = DIR_SALIDA / "bronce.txt"
             with open(path_bronce_txt, "w") as f:
                 for file in DIR_BRONCE.rglob("*.gz"):
                     f.write(f"{file}\n")
             zipf.write(path_bronce_txt, arcname="bronce.txt")
 
-            ### logs
             log_dir = f"/usr/local/airflow/logs/dag_id={dag_run.dag_id}/run_id={dag_run.run_id}"
             if os.path.exists(log_dir):
                 for root, _, archivos in os.walk(log_dir):
@@ -236,8 +224,8 @@ def pipeline_vehiculos():
     refresh = chequear_refresh_mensual()
 
     ### dependencias de ingesta
-    c_raw = cosecha_bronce_carone()
-    d_raw = cosecha_bronce_deruedas.expand(marca=lista_marcas, trigger=[setup])
+    c_raw = cosecha_bronce_carone(setup) 
+    d_raw = cosecha_bronce_deruedas.expand(marca=lista_marcas, trigger=[setup]) 
     plata = consolidar_capa_plata(c_raw, d_raw)
     congelado = usar_respaldo_congelado()
 
