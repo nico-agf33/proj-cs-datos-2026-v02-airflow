@@ -1,7 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
 import re
-import time
 import logging
 from datetime import datetime
 from ..normalize import as_number, remove_accents, clean_price_and_currency, parse_motor, parse_tecnico
@@ -14,6 +13,7 @@ _HEADERS = {
 }
 
 def get_available_brands() -> list[str]:
+    ### extraer todas las marcas disponibles para segmentar la busqueda
     url = f"{_BASE}/bus.asp?segmento=0"
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=20)
@@ -27,70 +27,75 @@ def get_available_brands() -> list[str]:
         logger.error(f"[deruedas] Error descubriendo marcas: {e}")
         return []
 
-def search(marca: str = None, modelo: str = None, delay: float = 1.55) -> list[dict]:
-    results = []
-    page = 1
-    params = "segmento=0"
-    if marca: params += f"&marca={marca.replace(' ', '%20')}"
-    if modelo: params += f"&modelo={marca}:{modelo}".replace(" ", "%20")
+def fetch_search_page_links(marca: str, page: int) -> list[str]:
 
-    while True:
-        url = f"{_BASE}/busCraw.asp?{params}&weNeed=divBusqueda&pag={page}"
-        try:
-            resp = requests.get(url, headers=_HEADERS, timeout=20)
-            resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            links = []
-            for a in soup.find_all('a', href=True):
-                if 'vendo/' in a['href']:
-                    full_url = a['href'] if a['href'].startswith("http") else _BASE + a['href']
-                    links.append(full_url)
-            unique_links = list(dict.fromkeys(links))
-            if not unique_links: break
-            
-            for url_ficha in unique_links:
-                time.sleep(delay) ### demora de proteccion
-                item = _scrape_detail(url_ficha)
-                if item: results.append(item)
-            page += 1
-        except Exception as e:
-            logger.error(f"[deruedas] Error en página {page}: {e}")
-            break
-    return results
+    ### descargar una pagina del buscador y devolver los links de los avisos
+   ### funcion  usada por el DAG para saber que descargar
 
-def _scrape_detail(url: str) -> dict | None:
+    params = f"segmento=0&marca={marca.replace(' ', '%20')}"
+    url = f"{_BASE}/busCraw.asp?{params}&weNeed=divBusqueda&pag={page}"
     try:
-        resp = requests.get(url, headers=_HEADERS, timeout=15)
-        resp.encoding = 'utf-8'
+        resp = requests.get(url, headers=_HEADERS, timeout=20)
+        resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
+        links = []
+        for a in soup.find_all('a', href=True):
+            if 'vendo/' in a['href']:
+                full_url = a['href'] if a['href'].startswith("http") else _BASE + a['href']
+                links.append(full_url)
+        return list(dict.fromkeys(links))
+    except Exception as e:
+        logger.error(f"[deruedas] Error obteniendo links de página {page} para {marca}: {e}")
+        return []
 
+def parse_html_to_dict(html_content: str, url: str) -> dict | None:
+
+    ### tomar HTML crudo (leido del disco) y transformarlo en un diccionario 'Plata'
+    ### mantener nombres en español y tipos numericos
+
+    try:
+        soup = BeautifulSoup(html_content, 'html.parser')
+
+       ### Marca y Modelo exactos desde el bloque JS interno
         model_exact, make_exact = None, None
         scripts = soup.find_all("script")
         for script in scripts:
             if script.string and "modelo:" in script.string:
                 model_match = re.search(r"modelo:\s*'([^']+)'", script.string)
-                make_match = re.search(r"marca:\s*'([^']+)'", script.string)
+                marca_match = re.search(r"marca:\s*'([^']+)'", script.string)
                 if model_match: model_exact = model_match.group(1)
-                if make_match: make_exact = make_match.group(1)
+                if marca_match: make_exact = marca_match.group(1)
                 break 
 
+        ### Precio y Moneda (desde la tabla visual)
         price_val, price_curr = 0.0, "ARS"
         for td in soup.find_all("td"):
             if "Precio:" in td.get_text():
                 b_tag = td.find("b")
-                if b_tag: price_val, price_curr = clean_price_and_currency(b_tag.get_text(strip=True))
+                if b_tag: 
+                    price_val, price_curr = clean_price_and_currency(b_tag.get_text(strip=True))
                 break
 
-        mapping = {"motor": "motor_lt", "potencia": "potencia_hp", "transmision": "transmision", 
-                   "traccion": "traccion", "combustible": "combustible", "consumo prom.": "consumo_lt_100km"}
+        ### Atributos tecnicos (cuadros box-destacado)
+        mapping = {
+            "motor": "motor_lt", 
+            "potencia": "potencia_hp", 
+            "transmision": "transmision", 
+            "traccion": "traccion", 
+            "combustible": "combustible", 
+            "consumo prom.": "consumo_lt_100km"
+        }
         specs = {}
         for box in soup.select(".box-destacado"):
             content = box.get_text(separator="|", strip=True).split("|")
             if len(content) >= 2:
                 label = remove_accents(content[0])
+                ### el valor real suele estar en el tag <b>
                 val = box.find("b").get_text(strip=True) if box.find("b") else content[-1]
-                if label in mapping: specs[mapping[label]] = val
+                if label in mapping:
+                    specs[mapping[label]] = val
 
+        ### Metadatos Schema.org 
         def get_meta(prop):
             tag = soup.find("meta", itemprop=prop)
             return tag["content"] if tag else None
@@ -105,6 +110,7 @@ def _scrape_detail(url: str) -> dict | None:
             "kilometraje": int(as_number(get_meta("mileageFromOdometer") or 0)),
             "precio": price_val,
             "moneda": price_curr,
+            ### normalizar floats tecnicos 
             "motor_lt": parse_motor(specs.get("motor_lt")),
             "potencia_hp": parse_tecnico(specs.get("potencia_hp")),
             "transmision": specs.get("transmision"),
@@ -115,4 +121,6 @@ def _scrape_detail(url: str) -> dict | None:
             "url": url,
             "fecha_ingesta": datetime.now().isoformat()
         }
-    except: return None
+    except Exception as e:
+        logger.warning(f"Error parseando HTML de {url}: {e}")
+        return None
