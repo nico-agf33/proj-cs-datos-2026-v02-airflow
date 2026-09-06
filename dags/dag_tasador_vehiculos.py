@@ -126,7 +126,7 @@ def pipeline_vehiculos():
                         resp.raise_for_status() 
                         with gzip.open(file_path, "wt", encoding="utf-8") as f:
                             f.write(resp.text)
-                        time.sleep(1.55) ### delay de protección entre fichas
+                        time.sleep(2.0) ### delay de protección entre fichas
                     except requests.exceptions.HTTPError as e:
                         if e.response.status_code == 429:
                             raise ### forzar reintento del DAG por bloqueo

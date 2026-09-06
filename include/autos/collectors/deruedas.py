@@ -31,7 +31,7 @@ def fetch_search_page_links(marca: str, page: int) -> list[str]:
     params = f"segmento=0&marca={marca.replace(' ', '%20')}"
     url = f"{_BASE}/busCraw.asp?{params}&weNeed=divBusqueda&pag={page}"
     ### pausa preventora de bloqueo antes de cada consulta al buscador
-    time.sleep(1.55)
+    time.sleep(2.0)
     resp = requests.get(url, headers=_HEADERS, timeout=20)
     resp.raise_for_status() 
     
