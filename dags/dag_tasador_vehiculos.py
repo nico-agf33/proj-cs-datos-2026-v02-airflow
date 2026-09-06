@@ -271,7 +271,7 @@ def pipeline_vehiculos():
 
     @task
     def limpiar_historial_bronce(trigger):
-        """Mantiene únicamente el batch actual y el anterior."""
+
         batches = sorted([d for d in DIR_BRONCE.iterdir() if d.is_dir() and d.name.startswith("batch=")])
         ### borrar el batch mas desactualizado
         if len(batches) > 2:
