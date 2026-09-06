@@ -111,6 +111,7 @@ def pipeline_vehiculos():
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         
         while True:
+        ### lista de URLs
             links = deruedas.fetch_search_page_links(marca, page)
             if not links: break
 
@@ -120,6 +121,7 @@ def pipeline_vehiculos():
                 
                 if not file_path.exists():
                     try:
+                    ### descarga y compresion
                         resp = requests.get(url, headers=headers, timeout=15)
                         resp.raise_for_status() 
                         with gzip.open(file_path, "wt", encoding="utf-8") as f:
@@ -133,7 +135,7 @@ def pipeline_vehiculos():
                 
                 saved_paths.append(str(file_path))
             page += 1
-            if page > 50: break 
+            #if page > 50: break 
             
         return saved_paths 
 
