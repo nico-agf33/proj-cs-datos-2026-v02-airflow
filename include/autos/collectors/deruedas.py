@@ -1,7 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
 import re
-import time
 import logging
 from datetime import datetime
 from ..normalize import as_number, remove_accents, clean_price_and_currency, parse_motor, parse_tecnico
@@ -14,6 +13,7 @@ _HEADERS = {
 }
 
 def get_available_brands() -> list[str]:
+    ### extraer marcas desde el panel 'divModelosFancy'
     url = f"{_BASE}/bus.asp?segmento=0"
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=20)
@@ -28,22 +28,25 @@ def get_available_brands() -> list[str]:
         return []
 
 def fetch_search_page_links(marca: str, page: int) -> list[str]:
+    ### descargar una pagina del buscador y devolver links de los avisos
     params = f"segmento=0&marca={marca.replace(' ', '%20')}"
     url = f"{_BASE}/busCraw.asp?{params}&weNeed=divBusqueda&pag={page}"
-    ### pausa preventora de bloqueo antes de cada consulta al buscador
-    time.sleep(2.0)
-    resp = requests.get(url, headers=_HEADERS, timeout=20)
-    resp.raise_for_status() 
-    
-    soup = BeautifulSoup(resp.text, 'html.parser')
-    links = [_BASE + a['href'] if a['href'].startswith('/') else a['href'] 
-             for a in soup.find_all('a', href=True) if 'vendo/' in a['href']]
-    return list(dict.fromkeys(links))
+    try:
+        resp = requests.get(url, headers=_HEADERS, timeout=20)
+        resp.raise_for_status() 
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        links = [_BASE + a['href'] if a['href'].startswith('/') else a['href'] 
+                 for a in soup.find_all('a', href=True) if 'vendo/' in a['href']]
+        return list(dict.fromkeys(links))
+    except:
+        return []
 
 def parse_html_to_dict(html_content: str, url: str) -> dict | None:
+    ### leer HTML crudo y transformar en un diccionario 'Plata'
     try:
         soup = BeautifulSoup(html_content, 'html.parser')
-
+        
+        ### identificar desde JS
         model_exact, make_exact = None, None
         scripts = soup.find_all("script")
         for script in scripts:
@@ -54,6 +57,7 @@ def parse_html_to_dict(html_content: str, url: str) -> dict | None:
                 if make_match: make_exact = make_match.group(1)
                 break 
 
+        ### Precio y Moneda
         price_val, price_curr = 0.0, "ARS"
         for td in soup.find_all("td"):
             if "Precio:" in td.get_text():
@@ -61,14 +65,9 @@ def parse_html_to_dict(html_content: str, url: str) -> dict | None:
                 if b_tag: price_val, price_curr = clean_price_and_currency(b_tag.get_text(strip=True))
                 break
 
-        mapping = {
-            "motor": "motor_lt", 
-            "potencia": "potencia_hp", 
-            "transmision": "transmision", 
-            "traccion": "traccion", 
-            "combustible": "combustible", 
-            "consumo prom.": "consumo_lt_100km"
-        }
+        ### atributos tecnicos
+        mapping = {"motor": "motor_lt", "potencia": "potencia_hp", "transmision": "transmision", 
+                   "traccion": "traccion", "combustible": "combustible", "consumo prom.": "consumo_lt_100km"}
         specs = {}
         for box in soup.select(".box-destacado"):
             content = box.get_text(separator="|", strip=True).split("|")
@@ -101,6 +100,4 @@ def parse_html_to_dict(html_content: str, url: str) -> dict | None:
             "url": url,
             "fecha_ingesta": datetime.now().isoformat()
         }
-    except Exception as e:
-        logger.warning(f"Error parseando HTML de {url}: {e}")
-        return None
+    except: return None
