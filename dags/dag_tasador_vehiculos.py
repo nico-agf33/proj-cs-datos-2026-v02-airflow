@@ -1,5 +1,5 @@
 """
-TP 1 - Cosecha Masiva - Grupo 5K09-03
+grupo 5K09-03
 """
 from __future__ import annotations
 import json
