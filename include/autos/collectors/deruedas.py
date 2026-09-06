@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import re
+import time
 import logging
 from datetime import datetime
 from ..normalize import as_number, remove_accents, clean_price_and_currency, parse_motor, parse_tecnico
@@ -13,7 +14,6 @@ _HEADERS = {
 }
 
 def get_available_brands() -> list[str]:
-    ### extraer todas las marcas disponibles para segmentar la busqueda
     url = f"{_BASE}/bus.asp?segmento=0"
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=20)
@@ -28,55 +28,39 @@ def get_available_brands() -> list[str]:
         return []
 
 def fetch_search_page_links(marca: str, page: int) -> list[str]:
-
-    ### descargar una pagina del buscador y devolver los links de los avisos
-   ### funcion  usada por el DAG para saber que descargar
-
     params = f"segmento=0&marca={marca.replace(' ', '%20')}"
     url = f"{_BASE}/busCraw.asp?{params}&weNeed=divBusqueda&pag={page}"
-    try:
-        resp = requests.get(url, headers=_HEADERS, timeout=20)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        links = []
-        for a in soup.find_all('a', href=True):
-            if 'vendo/' in a['href']:
-                full_url = a['href'] if a['href'].startswith("http") else _BASE + a['href']
-                links.append(full_url)
-        return list(dict.fromkeys(links))
-    except Exception as e:
-        logger.error(f"[deruedas] Error obteniendo links de página {page} para {marca}: {e}")
-        return []
+    ### pausa preventora de bloqueo antes de cada consulta al buscador
+    time.sleep(1.55)
+    resp = requests.get(url, headers=_HEADERS, timeout=20)
+    resp.raise_for_status() 
+    
+    soup = BeautifulSoup(resp.text, 'html.parser')
+    links = [_BASE + a['href'] if a['href'].startswith('/') else a['href'] 
+             for a in soup.find_all('a', href=True) if 'vendo/' in a['href']]
+    return list(dict.fromkeys(links))
 
 def parse_html_to_dict(html_content: str, url: str) -> dict | None:
-
-    ### tomar HTML crudo (leido del disco) y transformarlo en un diccionario 'Plata'
-    ### mantener nombres en español y tipos numericos
-
     try:
         soup = BeautifulSoup(html_content, 'html.parser')
 
-       ### Marca y Modelo exactos desde el bloque JS interno
         model_exact, make_exact = None, None
         scripts = soup.find_all("script")
         for script in scripts:
             if script.string and "modelo:" in script.string:
                 model_match = re.search(r"modelo:\s*'([^']+)'", script.string)
-                marca_match = re.search(r"marca:\s*'([^']+)'", script.string)
+                make_match = re.search(r"marca:\s*'([^']+)'", script.string)
                 if model_match: model_exact = model_match.group(1)
-                if marca_match: make_exact = marca_match.group(1)
+                if make_match: make_exact = make_match.group(1)
                 break 
 
-        ### Precio y Moneda (desde la tabla visual)
         price_val, price_curr = 0.0, "ARS"
         for td in soup.find_all("td"):
             if "Precio:" in td.get_text():
                 b_tag = td.find("b")
-                if b_tag: 
-                    price_val, price_curr = clean_price_and_currency(b_tag.get_text(strip=True))
+                if b_tag: price_val, price_curr = clean_price_and_currency(b_tag.get_text(strip=True))
                 break
 
-        ### Atributos tecnicos (cuadros box-destacado)
         mapping = {
             "motor": "motor_lt", 
             "potencia": "potencia_hp", 
@@ -90,12 +74,9 @@ def parse_html_to_dict(html_content: str, url: str) -> dict | None:
             content = box.get_text(separator="|", strip=True).split("|")
             if len(content) >= 2:
                 label = remove_accents(content[0])
-                ### el valor real suele estar en el tag <b>
                 val = box.find("b").get_text(strip=True) if box.find("b") else content[-1]
-                if label in mapping:
-                    specs[mapping[label]] = val
+                if label in mapping: specs[mapping[label]] = val
 
-        ### Metadatos Schema.org 
         def get_meta(prop):
             tag = soup.find("meta", itemprop=prop)
             return tag["content"] if tag else None
@@ -110,7 +91,6 @@ def parse_html_to_dict(html_content: str, url: str) -> dict | None:
             "kilometraje": int(as_number(get_meta("mileageFromOdometer") or 0)),
             "precio": price_val,
             "moneda": price_curr,
-            ### normalizar floats tecnicos 
             "motor_lt": parse_motor(specs.get("motor_lt")),
             "potencia_hp": parse_tecnico(specs.get("potencia_hp")),
             "transmision": specs.get("transmision"),
