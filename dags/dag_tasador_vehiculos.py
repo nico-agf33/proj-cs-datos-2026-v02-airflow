@@ -204,7 +204,7 @@ def pipeline_vehiculos():
             
             path_bronce_txt = DIR_SALIDA / "bronce.txt"
             with open(path_bronce_txt, "w") as f:
-                for file in DIR_BRONCE.rglob("*.gz"):
+                for file in DIR_BRONCE.rglob("*.*"):
                     f.write(f"{file}\n")
             zipf.write(path_bronce_txt, arcname="bronce.txt")
 
