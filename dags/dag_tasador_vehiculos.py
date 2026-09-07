@@ -29,19 +29,19 @@ DIR_FROZEN = Path("/usr/local/airflow/include/frozen")
 
 VAR_ULTIMA_COSECHA = "autos_fecha_ultima_ingesta"
 
+
 @dag(
     dag_id="tp1_5K09_03_autos_mensual",
     schedule="@daily",
     start_date=pendulum.datetime(2026, 8, 1, tz="America/Argentina/Buenos_Aires"),
     catchup=False,
-    max_active_tasks=2, 
+    max_active_tasks=2,
     tags=["proyecto-integrador", "vehiculos"],
     params={
         "forzar_descarga": Param(False, type="boolean", title="Forzar recolección ahora"),
     },
 )
 def pipeline_vehiculos():
-
     @task
     def crear_carpetas_trabajo():
         for carpeta in [DIR_BRONCE, DIR_PLATA, DIR_BRONCE / "deruedas"]:
@@ -56,7 +56,8 @@ def pipeline_vehiculos():
             if m_carone and m_deruedas:
                 return ResultadoValidacion(is_done=True)
             return ResultadoValidacion(is_done=False)
-        except: return ResultadoValidacion(is_done=False)
+        except:
+            return ResultadoValidacion(is_done=False)
 
     @task
     def obtener_marcas_actuales():
@@ -77,8 +78,8 @@ def pipeline_vehiculos():
         return dias >= 30
 
     @task
-    def cosecha_bronce_carone(trigger): 
-        datos_api = carone.search() 
+    def cosecha_bronce_carone(trigger):
+        datos_api = carone.search()
         ruta_archivo = DIR_BRONCE / "carone_raw.json"
         with open(ruta_archivo, "w", encoding="utf-8") as f:
             json.dump(datos_api, f, ensure_ascii=False, indent=4)
@@ -86,7 +87,7 @@ def pipeline_vehiculos():
 
     @task(
         map_index_template="{{ task.op_kwargs['marca'] }}",
-        retries=3,                            
+        retries=3,
         retry_delay=pendulum.duration(minutes=10)
     )
     def cosecha_bronce_deruedas(marca, trigger) -> str:
@@ -99,7 +100,12 @@ def pipeline_vehiculos():
         while True:
             ### obtener links de la pagina del buscador
             links = deruedas.fetch_search_page_links(marca, page)
-            if not links: break
+            if not links:
+                log.info(f"Pagina {page} de {marca} terminada.")
+                break
+            else:
+                log.info(f"Se obtuvo la pagina: {page} de {marca}, tiene {len(links)} links.")
+
             hizo_descarga = False
 
             for url in links:
@@ -110,20 +116,23 @@ def pipeline_vehiculos():
                 if not file_path.exists():
                     try:
                         resp = requests.get(url, headers=headers, timeout=15)
-                        resp.raise_for_status() 
+                        resp.raise_for_status()
                         with gzip.open(file_path, "wt", encoding="utf-8") as f:
                             f.write(resp.text)
 
                         hizo_descarga = True
-                        time.sleep(1.55) 
+                        time.sleep(1.55)
                     except requests.exceptions.HTTPError as e:
-                        if e.response.status_code == 429: raise 
+                        if e.response.status_code == 429:
+                            raise
                         continue
-                    except: continue
+                    except:
+                        continue
 
             if not hizo_descarga:
+                log.info(f"No se descarga vehiculos de la pagina {page}, espera 1.55")
                 time.sleep(1.55)
-            page += 1 
+            page += 1
 
         return str(marca_dir)
 
@@ -149,7 +158,11 @@ def pipeline_vehiculos():
                     data = deruedas.parse_html_to_dict(html, url_original)
                     if data:
                         registros_unificados.append(data)
-                except: continue
+                    else:
+                        log.info(f"no se proceso el {file} porque no es data")
+                except:
+                    log.info(f"no se proceso el {file} por un error")
+                    continue
 
         df = pd.DataFrame(registros_unificados)
         for col in schema.NUMERICAS:
@@ -157,7 +170,7 @@ def pipeline_vehiculos():
 
         df['grupo'] = Variable.get("grupo", default="5K09-03")
         df = df.drop_duplicates(subset=["id_publicacion"]).reset_index(drop=True)
-        
+
         ds = context["ds"]
         ruta_final = DIR_PLATA / f"final_{ds}.csv"
         df.to_csv(ruta_final, index=False, encoding="utf-8")
@@ -192,6 +205,8 @@ def pipeline_vehiculos():
             "5_nulos_conocidos": df.isna().mean().sort_values(ascending=False).to_dict(),
             "6_columnas_vacias": df.columns[df.isna().all()].tolist()
         }
+
+        log.info(f"criterios generados: {criterios}")
 
         return criterios
 
@@ -230,7 +245,7 @@ def pipeline_vehiculos():
     vivas = validar_disponibilidad_fuentes(setup)
     marcas = obtener_marcas_actuales()
     vivas >> marcas
-    
+
     camino = elegir_ruta_datos(marcas)
     refresh = chequear_refresh_mensual()
 
@@ -244,5 +259,6 @@ def pipeline_vehiculos():
     refresh >> [c_raw, d_raw]
 
     generar_entregable_zip(validar_calidad_dataset(plata))
+
 
 pipeline_vehiculos()
