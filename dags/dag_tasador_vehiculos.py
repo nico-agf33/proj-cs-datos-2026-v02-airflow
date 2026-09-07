@@ -89,14 +89,13 @@ def pipeline_vehiculos():
         retries=3,                            
         retry_delay=pendulum.duration(minutes=10)
     )
-    def cosecha_bronce_deruedas(marca, trigger): 
+    def cosecha_bronce_deruedas(marca, trigger) -> str:
         marca_dir = DIR_BRONCE / "deruedas" / f"marca={_slug(marca)}"
         marca_dir.mkdir(parents=True, exist_ok=True)
-        
-        saved_paths = []
+
         page = 1
         headers = {"User-Agent": "Mozilla/5.0"}
-        
+
         while True:
             ### obtener links de la pagina del buscador
             links = deruedas.fetch_search_page_links(marca, page)
@@ -121,40 +120,41 @@ def pipeline_vehiculos():
                         if e.response.status_code == 429: raise 
                         continue
                     except: continue
-                
-                saved_paths.append(str(file_path))
+
             if not hizo_descarga:
                 time.sleep(1.55)
             page += 1 
 
-        return saved_paths 
+        return str(marca_dir)
 
     @task
-    def consolidar_capa_plata(json_carone, paths_dr_nested, **context):
+    def consolidar_capa_plata(json_carone, paths_dr, **context):
         DIR_PLATA.mkdir(parents=True, exist_ok=True)
         registros_unificados = []
-        
+
         ### procesar CarOne
         with open(json_carone, 'r') as f:
             registros_unificados.extend(json.load(f))
-            
+
         ### procesar deRuedas leyendo HTML.gz del disco
-        for path_list in paths_dr_nested:
-            if not path_list: continue
-            for file_path in path_list:
+        for path in paths_dr:
+            if not path: continue
+            log.info(f"procesando archivos de {path}")
+            for file in Path(path).iterdir():
                 try:
-                    with gzip.open(file_path, "rt", encoding="utf-8") as f:
+                    with gzip.open(file, "rt", encoding="utf-8") as f:
                         html = f.read()
-                    car_id = Path(file_path).name.replace("id_", "").replace(".html.gz", "")
+                    car_id = Path(file).name.replace("id_", "").replace(".html.gz", "")
                     url_original = f"https://www.deruedas.com.ar/resul.asp?cod={car_id}"
                     data = deruedas.parse_html_to_dict(html, url_original)
-                    if data: registros_unificados.append(data)
+                    if data:
+                        registros_unificados.append(data)
                 except: continue
 
         df = pd.DataFrame(registros_unificados)
         for col in schema.NUMERICAS:
             if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce')
-        
+
         df['grupo'] = Variable.get("grupo", default="5K09-03")
         df = df.drop_duplicates(subset=["id_publicacion"]).reset_index(drop=True)
         
