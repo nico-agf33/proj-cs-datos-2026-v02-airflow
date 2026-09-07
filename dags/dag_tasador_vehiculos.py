@@ -101,11 +101,12 @@ def pipeline_vehiculos():
             ### obtener links de la pagina del buscador
             links = deruedas.fetch_search_page_links(marca, page)
             if not links: break
+            hizo_descarga = False
 
             for url in links:
                 car_id = url.split("cod=")[-1]
                 file_path = marca_dir / f"id_{car_id}.html.gz"
-                
+
                 ## descargar solo si el archivo no existe en Bronce
                 if not file_path.exists():
                     try:
@@ -113,7 +114,8 @@ def pipeline_vehiculos():
                         resp.raise_for_status() 
                         with gzip.open(file_path, "wt", encoding="utf-8") as f:
                             f.write(resp.text)
-                        
+
+                        hizo_descarga = True
                         time.sleep(1.55) 
                     except requests.exceptions.HTTPError as e:
                         if e.response.status_code == 429: raise 
@@ -121,6 +123,8 @@ def pipeline_vehiculos():
                     except: continue
                 
                 saved_paths.append(str(file_path))
+            if not hizo_descarga:
+                time.sleep(1.55)
             page += 1 
 
         return saved_paths 
