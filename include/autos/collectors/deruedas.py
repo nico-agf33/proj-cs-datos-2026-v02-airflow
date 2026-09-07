@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import logging
+import time
 from datetime import datetime
 from ..normalize import as_number, remove_accents, clean_price_and_currency, parse_motor, parse_tecnico
 
