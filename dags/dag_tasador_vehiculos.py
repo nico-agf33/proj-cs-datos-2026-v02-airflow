@@ -51,7 +51,7 @@ def pipeline_vehiculos():
         log.info("directorios creados")
         return True
 
-    @task.sensor(poke_interval=60, timeout=1800, mode="reschedule", soft_fail=True)
+    @task.sensor(poke_interval=350, timeout=1800, mode="reschedule", soft_fail=True)
     def validar_disponibilidad_fuentes(trigger):
         try:
             ### si se obtienen marcas, el sitio esta online
@@ -133,7 +133,7 @@ def pipeline_vehiculos():
                         break
 
                 if archivo_previo:
-                    ### Si existe, copiar al batch actual 
+                    ### si existe, copiar al batch actual 
                     shutil.copy2(archivo_previo, file_path)
                     log.info(f"Reutilizando archivo previo para ID {car_id}")
                 elif not file_path.exists():
