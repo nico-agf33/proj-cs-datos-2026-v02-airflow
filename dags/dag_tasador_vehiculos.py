@@ -173,16 +173,43 @@ def pipeline_vehiculos():
     @task(trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS)
     def validar_calidad_dataset(ruta_csv):
         df = pd.read_csv(ruta_csv)
+        _, columnas = df.shape
         meta_v = int(Variable.get("meta_volumen", default=9000))
-        if len(df) < meta_v: raise ValueError(f"volumen insuficiente: {len(df)}/{meta_v}")
-        return ruta_csv
+        if len(df) < meta_v:
+            raise ValueError(f"volumen insuficiente: {len(df)}/{meta_v}")
+
+        if not df["id_publicacion"].is_unique:
+            raise ValueError(f"hay claves repetidas")
+
+        if columnas < 5:
+            raise ValueError("No tiene ancho suficiente")
+
+        criterios = {
+            "1_hay_claves_repetidas": not df["id_publicacion"].is_unique,
+            "2_volumen": len(df),
+            "3_ancho": columnas,
+            "4_mezcla_de_tipos": df.dtypes.astype(str).value_counts().to_dict(),
+            "5_nulos_conocidos": df.isna().mean().sort_values(ascending=False).to_dict(),
+            "6_columnas_vacias": df.columns[df.isna().all()].tolist()
+        }
+
+        return criterios
 
     @task
-    def generar_entregable_zip(csv_path: str, **context):
+    def generar_entregable_zip(criterios, **context):
+        ti = context["ti"]
+        csv_path = ti.xcom_pull(task_ids="consolidar_capa_plata")
+
         dag_run = context["dag_run"]
         path_zip = DIR_SALIDA / "tp1_5K09_03.zip"
+
+        json_path = DIR_SALIDA / "criterios.json"
+        with open(json_path, "w") as f:
+            json.dump(criterios, f, indent=2)
+
         with zipfile.ZipFile(path_zip, 'w', zipfile.ZIP_DEFLATED) as zipf:
             zipf.write(csv_path, arcname="dataset.csv")
+            zipf.write(csv_path, arcname="criterios.json")
             zipf.write(__file__, arcname="codigo_dag.py")
             ### salida bronce
             path_bronce_txt = DIR_SALIDA / "bronce.txt"
@@ -206,16 +233,16 @@ def pipeline_vehiculos():
     
     camino = elegir_ruta_datos(marcas)
     refresh = chequear_refresh_mensual()
-    
-    c_raw = cosecha_bronce_carone(setup) 
-    d_raw = cosecha_bronce_deruedas.expand(marca=marcas, trigger=[setup]) 
-    
+
+    c_raw = cosecha_bronce_carone(setup)
+    d_raw = cosecha_bronce_deruedas.expand(marca=marcas, trigger=[setup])
+
     plata = consolidar_capa_plata(c_raw, d_raw)
     congelado = usar_respaldo_congelado()
 
     camino >> [refresh, congelado]
     refresh >> [c_raw, d_raw]
-    
+
     generar_entregable_zip(validar_calidad_dataset(plata))
 
 pipeline_vehiculos()
