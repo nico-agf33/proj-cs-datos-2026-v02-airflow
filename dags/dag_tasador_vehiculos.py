@@ -206,7 +206,7 @@ def pipeline_vehiculos():
             "1_volumen_suficiente": {"filas_encontradas": int(len(df)), "meta_minima": meta_v, "estado": "OK" if len(df) >= meta_v else "ERROR"},
             "2_clave_unica": {"is_unique": bool(df["id_publicacion"].is_unique), "estado": "OK" if df["id_publicacion"].is_unique else "ERROR"},
             "3_ancho_suficiente": {"columnas_encontradas": int(df.shape[1]), "estado": "OK" if df.shape[1] >= 5 else "ERROR"},
-            "4_mezcla_tipos": df.dtypes.value_counts().astype(str).to_dict(),
+            "4_mezcla_tipos": df.dtypes.value_counts().rename(index=str).to_dict(),
             "5_nulos_por_columna": df.isna().mean().sort_values(ascending=False).to_dict(),
             "6_columnas_vacias": df.columns[df.isna().all()].tolist(),
         }
