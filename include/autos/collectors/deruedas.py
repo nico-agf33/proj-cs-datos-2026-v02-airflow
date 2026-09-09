@@ -66,13 +66,13 @@ def parse_html_to_dict(html_content: str, url: str) -> dict | None:
                 break
 
         ### atributos tecnicos
-        mapping = {"motor": "motor_lt", "potencia": "potencia_hp", "transmision": "transmision", 
-                   "traccion": "traccion", "combustible": "combustible", "consumo prom.": "consumo_lt_100km"}
+        mapping = {"motor": "motor_lt", "potencia": "potencia_hp", "transmision": "transmision", "caja": "transmision",
+                   "traccion": "traccion", "combustible": "combustible", "consumo prom.": "consumo_lt_100km", "consumo prom": "consumo_lt_100km"}
         specs = {}
         for box in soup.select(".box-destacado"):
             content = box.get_text(separator="|", strip=True).split("|")
             if len(content) >= 2:
-                label = remove_accents(content[0])
+                label = remove_accents(content[0]).replace(":", "").strip()
                 val = box.find("b").get_text(strip=True) if box.find("b") else content[-1]
                 if label in mapping: specs[mapping[label]] = val
 
