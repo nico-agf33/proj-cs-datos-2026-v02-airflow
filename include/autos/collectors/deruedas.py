@@ -67,17 +67,32 @@ def parse_html_to_dict(html_content: str, url: str) -> dict | None:
                 if b_tag: price_val, price_curr = clean_price_and_currency(b_tag.get_text(strip=True))
                 break
 
-        ### atributos tecnicos
-        mapping = {"motor": "motor_lt", "potencia": "potencia_hp", "transmision": "transmision", 
-                   "traccion": "traccion", "combustible": "combustible", "consumo prom.": "consumo_lt_100km"}
+        ### atributos tecnicos por indice posicional
+        box_elements = soup.select(".box-destacado")
+        
+        ### mapear indices de los boxes a las columnas del esquema
+        indices = {
+            0: "motor_lt",
+            1: "potencia_hp",
+            2: "transmision",
+            3: "traccion",
+            4: "combustible",
+            5: "consumo_lt_100km"
+        }
+        
         specs = {}
-        for box in soup.select(".box-destacado"):
-            content = box.get_text(separator="|", strip=True).split("|")
-            if len(content) >= 2:
-                label = remove_accents(content[0])
-                val = box.find("b").get_text(strip=True) if box.find("b") else content[-1]
-                if label in mapping: specs[mapping[label]] = val
-
+        for i, box in enumerate(box_elements):
+            if i in indices:
+                columna = indices[i]
+                b_tag = box.find("b")
+                if b_tag:
+                    val = b_tag.get_text(strip=True)
+                    ### aplicar normalizacion segun corresponda
+                    if columna in ["motor_lt", "potencia_hp", "consumo_lt_100km"]:
+                        specs[columna] = parse_tecnico(val)
+                    else:
+                        specs[columna] = val.title()
+                        
         def get_meta(prop):
             tag = soup.find("meta", itemprop=prop)
             return tag["content"] if tag else None
