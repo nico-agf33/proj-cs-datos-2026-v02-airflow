@@ -46,6 +46,7 @@ def fetch_search_page_links(marca: str, page: int) -> list[str]:
 def parse_html_to_dict(html_content: str, url: str) -> dict | None:
     ### leer HTML crudo y transformar en un diccionario 'Plata'
     try:
+        resp.encoding = 'utf-8'
         soup = BeautifulSoup(html_content, 'html.parser')
         
         ### identificar desde JS

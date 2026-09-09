@@ -43,10 +43,10 @@ VAR_ULTIMA_COSECHA = "autos_fecha_ultima_ingesta"
 )
 def pipeline_vehiculos():
 
-    @task
+@task
     def crear_carpetas_trabajo():
         ### crear la estructura de carpetas 
-        for carpeta in [DIR_BRONCE, DIR_PLATA]:
+        for carpeta in [DIR_BRONCE, DIR_PLATA, DIR_BRONCE / "deruedas", DIR_FROZEN]:
             carpeta.mkdir(parents=True, exist_ok=True)
         log.info("directorios creados")
         return True
@@ -141,6 +141,7 @@ def pipeline_vehiculos():
                     try:
                         resp = requests.get(url, headers=headers, timeout=15)
                         resp.raise_for_status() 
+                        resp.encoding = 'utf-8'
                         with gzip.open(file_path, "wt", encoding="utf-8") as f:
                             f.write(resp.text)
                         time.sleep(1.55) 
