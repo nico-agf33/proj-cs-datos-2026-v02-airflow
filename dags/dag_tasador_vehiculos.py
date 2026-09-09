@@ -43,7 +43,7 @@ VAR_ULTIMA_COSECHA = "autos_fecha_ultima_ingesta"
 )
 def pipeline_vehiculos():
 
-@task
+    @task
     def crear_carpetas_trabajo():
         ### crear la estructura de carpetas 
         for carpeta in [DIR_BRONCE, DIR_PLATA, DIR_BRONCE / "deruedas", DIR_FROZEN]:
